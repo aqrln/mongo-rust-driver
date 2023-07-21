@@ -192,6 +192,17 @@ impl ServerAddress {
                 });
             }
         }
+
+        if address.starts_with('[') {
+            let mut parts = address[1..].split("]:");
+            let ip = parts.next().unwrap();
+            let port = parts.next().map(|p| p.parse().unwrap());
+            return Ok(Self::Tcp {
+                host: ip.to_owned(),
+                port,
+            });
+        }
+
         let mut parts = address.split(':');
         let hostname = match parts.next() {
             Some(part) => {
@@ -2390,6 +2401,35 @@ mod tests {
                 _ => panic!("expected ServerAddress::Unix"),
             }
         }
+    }
+
+    #[test]
+    fn parse_ipv6_address() {
+        match "[::1]:27017".parse::<ServerAddress>().unwrap() {
+            ServerAddress::Tcp { host, port } => {
+                assert_eq!(host, "::1");
+                assert_eq!(port, Some(27017));
+            }
+            #[cfg(unix)]
+            _ => panic!("expected ServerAddress::Tcp"),
+        }
+
+        match "[aaaa:bbbb:cccc:dddd:eeee:ffff:1234:1234]"
+            .parse::<ServerAddress>()
+            .unwrap()
+        {
+            ServerAddress::Tcp { host, port } => {
+                assert_eq!(host, "aaaa:bbbb:cccc:dddd:eeee:ffff:1234:1234");
+                assert_eq!(port, None);
+            }
+            #[cfg(unix)]
+            _ => panic!("expected ServerAddress::Tcp"),
+        }
+
+        assert!("[]".parse::<ServerAddress>().is_err());
+        assert!("[::1".parse::<ServerAddress>().is_err());
+        assert!("[::1]:".parse::<ServerAddress>().is_err());
+        assert!("[::1]:27017:".parse::<ServerAddress>().is_err());
     }
 
     #[cfg_attr(feature = "tokio-runtime", tokio::test)]
